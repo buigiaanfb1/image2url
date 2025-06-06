@@ -1,10 +1,7 @@
-import { useState } from "react";
-import { storage } from "./firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { v4 as uuidv4 } from "uuid";
-
+import { useState, useEffect, useRef } from "react";
 import {
   Container,
+  Grid,
   Typography,
   Button,
   Stack,
@@ -17,22 +14,72 @@ import {
   CardMedia,
   CircularProgress,
   Box,
+  IconButton,
+  Tooltip,
+  Fade,
 } from "@mui/material";
-
+import { useTheme } from "@mui/material/styles";
+import { useColorMode } from "./AppThemeProvider";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CloseIcon from "@mui/icons-material/Close";
+import { storage } from "./firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { v4 as uuidv4 } from "uuid";
 
 function App() {
   const [images, setImages] = useState([]);
-  const [uploaded, setUploaded] = useState([]); // Array of { url, copied }
+  const [uploaded, setUploaded] = useState([]);
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const theme = useTheme();
+  const { toggleColorMode } = useColorMode();
+  const dropRef = useRef();
+
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData.items;
+      const files = [];
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length) {
+        setImages((prev) => [...prev, ...files]);
+        showToast("Đã dán ảnh từ clipboard");
+      }
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, []);
+
+  useEffect(() => {
+    const dropArea = dropRef.current;
+    const handleDrop = (e) => {
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files).filter((file) =>
+        ["image/jpeg", "image/png"].includes(file.type)
+      );
+      setImages((prev) => [...prev, ...files]);
+    };
+    const handleDragOver = (e) => e.preventDefault();
+
+    dropArea.addEventListener("drop", handleDrop);
+    dropArea.addEventListener("dragover", handleDragOver);
+    return () => {
+      dropArea.removeEventListener("drop", handleDrop);
+      dropArea.removeEventListener("dragover", handleDragOver);
+    };
+  }, []);
 
   const uploadImages = async () => {
     if (!images.length) {
-      setToastMessage("Please choose image(s)");
-      setToastOpen(true);
+      showToast("Vui lòng chọn ảnh");
       return;
     }
 
@@ -46,9 +93,8 @@ function App() {
       newUploads.push({ url: downloadUrl, copied: false });
     }
 
-    setUploaded((prev) => [...prev, ...newUploads]);
-    setToastMessage("Upload successful!");
-    setToastOpen(true);
+    setUploaded((prev) => [...newUploads, ...prev]);
+    showToast("Tải lên thành công!");
     setImages([]);
     setUploading(false);
   };
@@ -56,13 +102,9 @@ function App() {
   const copyToClipboard = (index) => {
     navigator.clipboard.writeText(uploaded[index].url).then(() => {
       setUploaded((prev) =>
-        prev.map((item, i) =>
-          i === index ? { ...item, copied: true } : item
-        )
+        prev.map((item, i) => (i === index ? { ...item, copied: true } : item))
       );
-      setToastMessage("Copied to clipboard!");
-      setToastOpen(true);
-
+      showToast("Đã sao chép đường dẫn!");
       setTimeout(() => {
         setUploaded((prev) =>
           prev.map((item, i) =>
@@ -73,11 +115,24 @@ function App() {
     });
   };
 
+  const removeImage = (indexToRemove) => {
+    setImages((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const showToast = (message) => {
+    setToastMessage(message);
+    setToastOpen(true);
+  };
+
   return (
     <Box
+      ref={dropRef}
       sx={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        background:
+          theme.palette.mode === "dark"
+            ? "linear-gradient(to right, #1e1e1e, #2d2d2d)"
+            : "linear-gradient(to right, #667eea, #764ba2)",
         py: 6,
         px: 2,
         display: "flex",
@@ -85,26 +140,36 @@ function App() {
         alignItems: "flex-start",
       }}
     >
+      <Box position="absolute" top={16} right={16}>
+        <Tooltip title="Đổi giao diện">
+          <IconButton onClick={toggleColorMode} color="inherit">
+            {theme.palette.mode === "dark" ? (
+              <LightModeIcon />
+            ) : (
+              <DarkModeIcon />
+            )}
+          </IconButton>
+        </Tooltip>
+      </Box>
       <Container
         maxWidth="md"
-        sx={{
-          bgcolor: "background.paper",
-          borderRadius: 3,
-          boxShadow: 4,
-          p: 4,
-        }}
+        sx={(theme) => ({
+          borderRadius: 4,
+          boxShadow: 6,
+          p: { xs: 3, sm: 4 },
+          bgcolor: theme.palette.mode === "dark" ? "#333" : "#fff",
+          color: theme.palette.mode === "dark" ? "#eee" : "#111",
+        })}
       >
         <Typography
-          variant="h3"
-          component="h1"
+          variant="h4"
           align="center"
           gutterBottom
-          sx={{ fontWeight: "bold", letterSpacing: 1 }}
+          sx={{ fontWeight: 700 }}
         >
-          Thêm ảnh thành viên
+          Ảnh thành viên
         </Typography>
 
-        {/* Custom file input with button */}
         <Stack
           direction={{ xs: "column", sm: "row" }}
           spacing={2}
@@ -112,18 +177,19 @@ function App() {
           justifyContent="center"
           mb={4}
         >
-          <Button
-            variant="contained"
-            component="label"
-            sx={{ px: 4, py: 1.5, fontWeight: "medium" }}
-          >
+          <Button variant="contained" component="label" sx={{ px: 4, py: 1.5 }}>
             Chọn ảnh
             <input
               hidden
               type="file"
               multiple
-              accept="image/*"
-              onChange={(e) => setImages(Array.from(e.target.files))}
+              accept="image/png, image/jpeg"
+              onChange={(e) => {
+                const valid = Array.from(e.target.files).filter((file) =>
+                  ["image/png", "image/jpeg"].includes(file.type)
+                );
+                setImages((prev) => [...prev, ...valid]);
+              }}
             />
           </Button>
 
@@ -132,104 +198,125 @@ function App() {
             color="secondary"
             onClick={uploadImages}
             disabled={uploading || !images.length}
-            sx={{ px: 5, py: 1.5, fontWeight: "medium", position: "relative" }}
+            sx={{ px: 5, py: 1.5, position: "relative" }}
           >
             {uploading ? (
-              <CircularProgress
-                size={24}
-                color="inherit"
-              />
+              <CircularProgress size={24} color="inherit" />
             ) : (
-              "Lấy đường dẫn"
+              "Tải ảnh"
             )}
           </Button>
         </Stack>
 
         {images.length > 0 && (
-          <Typography
-            variant="body1"
-            align="center"
-            color="text.secondary"
-            mb={4}
-          >
-            {images.length} ảnh{images.length > 1 ? "s" : ""} đã được chọn
-          </Typography>
+          <>
+            <Typography align="center" mb={2}>
+              {images.length} ảnh đã chọn
+            </Typography>
+            <Stack direction="row" spacing={2} mb={4} flexWrap="wrap">
+              {images.map((img, i) => (
+                <Box key={i} position="relative">
+                  <Card sx={{ width: 150, borderRadius: 2, boxShadow: 3 }}>
+                    <CardMedia
+                      component="img"
+                      height="120"
+                      image={URL.createObjectURL(img)}
+                      alt={`Preview ${i}`}
+                      sx={{ objectFit: "cover" }}
+                    />
+                  </Card>
+                  <IconButton
+                    onClick={() => removeImage(i)}
+                    size="small"
+                    sx={{
+                      position: "absolute",
+                      top: 4,
+                      right: 4,
+                      bgcolor: "rgba(255,255,255,0.7)",
+                      "&:hover": { bgcolor: "rgba(255,255,255,1)" },
+                    }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+            </Stack>
+          </>
         )}
 
         {uploaded.length > 0 && (
           <>
             <Typography
-              variant="h5"
+              variant="h6"
               gutterBottom
-              sx={{ fontWeight: "medium", mb: 3 }}
+              sx={{ mb: 3, fontWeight: 600 }}
             >
               Ảnh đã lưu
             </Typography>
-
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={3}
-              flexWrap="wrap"
-              justifyContent="center"
-            >
+            <Grid container spacing={3} justifyContent="center">
               {uploaded.map((item, index) => (
-                <Card
-                  key={index}
-                  sx={{
-                    maxWidth: 280,
-                    flexGrow: 1,
-                    borderRadius: 2,
-                    boxShadow: 6,
-                    position: "relative",
-                    transition: "transform 0.2s ease-in-out",
-                    "&:hover": {
-                      transform: "scale(1.03)",
-                      boxShadow: 10,
-                    },
-                  }}
-                >
-                  <CardMedia
-                    component="img"
-                    height="180"
-                    image={item.url}
-                    alt={`Uploaded face ${index + 1}`}
-                    sx={{ objectFit: "cover" }}
-                  />
-                  <CardContent sx={{ px: 2, pt: 2, pb: 0 }}>
-                    <Link
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener"
+                <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
+                  <Fade in timeout={500}>
+                    <Card
                       sx={{
-                        fontSize: 14,
-                        wordBreak: "break-word",
-                        color: "primary.main",
+                        borderRadius: 3,
+                        maxWidth: 320,
+                        mx: "auto",
+                        boxShadow: 4,
+                        transition: "transform 0.3s ease-in-out",
+                        "&:hover": {
+                          transform: "scale(1.03)",
+                          boxShadow: 8,
+                        },
                       }}
                     >
-                      {item.url}
-                    </Link>
-                  </CardContent>
-                  <CardActions sx={{ px: 2, pb: 2 }}>
-                    <Button
-                      size="small"
-                      variant={item.copied ? "outlined" : "contained"}
-                      color={item.copied ? "success" : "primary"}
-                      startIcon={
-                        item.copied ? <CheckCircleIcon /> : <ContentCopyIcon />
-                      }
-                      onClick={() => copyToClipboard(index)}
-                      sx={{
-                        textTransform: "none",
-                        fontWeight: "medium",
-                        transition: "all 0.3s ease",
-                      }}
-                    >
-                      {item.copied ? "Copied!" : "Copy Link"}
-                    </Button>
-                  </CardActions>
-                </Card>
+                      <CardMedia
+                        component="img"
+                        height="180"
+                        image={item.url}
+                        alt={`Uploaded face ${index + 1}`}
+                        sx={{ objectFit: "cover" }}
+                      />
+                      <CardContent sx={{ px: 2, pt: 2, pb: 0 }}>
+                        <Tooltip title="Mở trong tab mới">
+                          <Link
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener"
+                            sx={{
+                              fontSize: 13,
+                              display: "inline-block",
+                              maxWidth: "100%",
+                              overflowWrap: "break-word",
+                              color: "primary.main",
+                            }}
+                          >
+                            {item.url}
+                          </Link>
+                        </Tooltip>
+                      </CardContent>
+                      <CardActions sx={{ px: 2, pb: 2 }}>
+                        <Button
+                          size="small"
+                          variant={item.copied ? "outlined" : "contained"}
+                          color={item.copied ? "success" : "primary"}
+                          startIcon={
+                            item.copied ? (
+                              <CheckCircleIcon />
+                            ) : (
+                              <ContentCopyIcon />
+                            )
+                          }
+                          onClick={() => copyToClipboard(index)}
+                        >
+                          {item.copied ? "Đã sao chép" : "Sao chép link"}
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Fade>
+                </Grid>
               ))}
-            </Stack>
+            </Grid>
           </>
         )}
 
