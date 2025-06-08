@@ -148,28 +148,29 @@ function App() {
       return;
     }
     setUploading(true);
-    const newUploads = [];
 
-    for (const image of images) {
-      try {
+    try {
+      const uploadPromises = images.map(async (image) => {
         const imageRef = ref(storage, `faces/${uuidv4()}`);
         await uploadBytes(imageRef, image);
         const downloadUrl = await getDownloadURL(imageRef);
-        newUploads.push({ url: downloadUrl, copied: false });
-      } catch (error) {
-        console.error("Upload failed", error);
-        showToast("Tải lên thất bại, thử lại sau");
-        setUploading(false);
-        return;
-      }
-    }
+        return { url: downloadUrl, copied: false };
+      });
 
-    setUploaded((prev) => [...newUploads, ...prev]);
-    showToast("Tải lên thành công!");
-    // Revoke preview URLs after upload
-    images.forEach((img) => URL.revokeObjectURL(img.preview));
-    setImages([]);
-    setUploading(false);
+      const newUploads = await Promise.all(uploadPromises);
+
+      setUploaded((prev) => [...newUploads, ...prev]);
+      showToast("Tải lên thành công!");
+
+      // Revoke preview URLs after upload
+      images.forEach((img) => URL.revokeObjectURL(img.preview));
+      setImages([]);
+    } catch (error) {
+      console.error("Upload failed", error);
+      showToast("Tải lên thất bại, thử lại sau");
+    } finally {
+      setUploading(false);
+    }
   };
 
   // Copy uploaded URL to clipboard with feedback
