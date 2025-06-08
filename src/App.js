@@ -102,30 +102,32 @@ function App() {
               blob: file,
               toType: "image/jpeg",
             });
-            return new File(
+
+            const previewUrl = URL.createObjectURL(convertedBlob);
+
+            const convertedFile = new File(
               [convertedBlob],
               file.name.replace(/\.(heic|heif)$/i, ".jpg"),
               {
                 type: "image/jpeg",
                 lastModified: Date.now(),
-                preview: URL.createObjectURL(convertedBlob),
               }
             );
+            convertedFile.preview = previewUrl;
+
+            return convertedFile;
           } catch (err) {
             console.error("HEIC conversion failed", err);
             return null;
           }
         } else {
-          // Add preview URL property for all other images
           file.preview = URL.createObjectURL(file);
           return file;
         }
       })
     );
 
-    // Filter out null results in case conversion failed
     const validFiles = processedFiles.filter(Boolean);
-
     setImages((prev) => [...prev, ...validFiles]);
   }, []);
 
@@ -247,7 +249,7 @@ function App() {
           gutterBottom
           sx={{ fontWeight: 700 }}
         >
-          Ảnh thành viên
+          Thêm ảnh thành viên
         </Typography>
 
         <Stack
